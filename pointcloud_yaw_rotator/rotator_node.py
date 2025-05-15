@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import PointCloud2
+from sensor_msgs.msg import PointCloud2, JointState
 import numpy as np
 import transformations
 import sensor_msgs_py.point_cloud2 as pc2
@@ -13,18 +13,40 @@ class PointCloudYawRotator(Node):
         self.rotation_deg = self.get_parameter('rotation_deg').get_parameter_value().double_value
         self.rotation_rad = np.deg2rad(self.rotation_deg)
 
-        self.subscription = self.create_subscription(
+        # Subscribers
+        self.create_subscription(
             PointCloud2,
-            'input_pointcloud',
+            '/scan',
             self.pointcloud_callback,
             10
         )
+        
+        self.create_subscription(
+            JointState,
+            '/lidar_yaw',
+            self.jointstate_callback,
+            10
+        )
+
+        # Publisher
         self.publisher = self.create_publisher(
             PointCloud2,
             'rotated_pointcloud',
             10
         )
         self.get_logger().info(f'Initialized with yaw rotation = {self.rotation_deg:.2f} degrees')
+
+    def jointstate_callback(self, msg: JointState):
+        """Update yaw angle (in radians) from JointState message"""
+        try:
+            if "yaw" in msg.name:
+                idx = msg.name.index("yaw")
+                self.rotation_rad = msg.position[idx]
+                self.get_logger().debug(f'Updated yaw from JointState to {np.rad2deg(self.rotation_rad):.2f} degrees')
+            else:
+                self.get_logger().warn('JointState message does not contain "yaw" joint')
+        except Exception as e:
+            self.get_logger().error(f'Error parsing JointState message: {e}')
 
     def pointcloud_callback(self, msg):
         # Read point cloud data
